@@ -722,7 +722,16 @@ function gene_em!( quant::GraphLibQuant, ambig::MultiMapping{C,R};
 
    count_temp = ones(length(quant.count))
    tpm_temp   = ones(length(quant.count))
-   prop_temp  = zeros( 500 )
+   # size the proportion buffer to the largest equivalence class,
+   # a fixed 500 overflows on reads compatible with >500 isoforms
+   maxclass   = 500
+   for eq in values(ambig.map)
+      maxclass = max( maxclass, length(eq.class) )
+   end
+   for eq in quant.classes
+      maxclass = max( maxclass, length(eq.class) )
+   end
+   prop_temp  = zeros( maxclass )
    uniqsum    = sum(quant.count)
    ambigsum   = length(ambig.map)
 

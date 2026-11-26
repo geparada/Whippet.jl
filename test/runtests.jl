@@ -519,6 +519,16 @@ IIIIIIIIIIII
          @test orig != gquant.tpm
          @test iter < 5000
          @test sum(gquant.tpm) == 1000000
+
+         # equivalence classes larger than the old fixed 500 buffer
+         for n in (500, 501, 1200)
+            bigquant = deepcopy(gquant)
+            classidx = repeat( collect(1:length(bigquant.tpm)), outer=cld(n, length(bigquant.tpm)) )[1:n]
+            push!( bigquant.classes, IsoCompat( classidx, 50.0 ) )
+            iter = gene_em!( bigquant, multi, sig=1, readlen=20, maxit=10000 )
+            @test iter < 5000
+            @test sum(bigquant.tpm) == 1000000
+         end
       end
 
       @testset "Output Files" begin
@@ -598,4 +608,35 @@ IIIIIIIIIIII
          end
       end
    end
+end
+
+@testset "Delta with back-splice rows" begin
+   header = "Gene\tNode\tCoord\tStrand\tType\tPsi\tCI_Width\tCI_Lo,Hi\tTotal_Reads\tComplexity\tEntropy\tInc_Paths\tExc_Paths\tEdges"
+   ev1    = "g1\t2\tchr1:101-200\t+\tCE\t0.8\t0.1\t0.75,0.85\t40.0\tK1\t0.5\t1-2-3:0.8\t1-3:0.2\t1-2:30.0,2-3:30.0,1-3:10.0"
+   ev2    = "g1\t3\tchr1:301-400\t+\tCE\t0.3\t0.1\t0.25,0.35\t40.0\tK1\t0.5\t2-3-4:0.3\t2-4:0.7\t2-3:12.0,3-4:12.0,2-4:28.0"
+   bs(n, psi) = "g1\t$n\tchr1:200-301\t+\tBS\t$psi\t0.2\t0.4,0.6\t10.0\tNA\tNA\tNA\tNA\tNA"
+
+   function write_psi( file, lines )
+      io = open( file, "w" )
+      stream = ZlibDeflateOutputStream( io )
+      for l in lines
+         write( stream, l * "\n" )
+      end
+      close(stream)
+      close(io)
+   end
+
+   dir = mktempdir()
+   # sample-specific BS rows, mid-file and trailing, that differ between a and b
+   write_psi( joinpath(dir, "a.psi.gz"), [header, ev1, bs("2-3", 0.5), ev2, bs("3-4", 0.4), bs("2-4", 0.6)] )
+   write_psi( joinpath(dir, "b.psi.gz"), [header, ev1, ev2, bs("2-3", 0.7)] )
+
+   out = joinpath(dir, "test")
+   process_psi_files( out * ".diff.gz", open_streams([joinpath(dir, "a.psi.gz")]),
+                                        open_streams([joinpath(dir, "b.psi.gz")]),
+                      min_samp=1, min_reads=5, amt=0.0, size=1000 )
+   lines = readlines( ZlibInflateInputStream( open( out * ".diff.gz" ) ) )
+   @test length(lines) == 3
+   @test map( l->split(l, '\t')[2], lines[2:end] ) == ["2", "3"]
+   @test all( l->split(l, '\t')[5] != "BS", lines )
 end

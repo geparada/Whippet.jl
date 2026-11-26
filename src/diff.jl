@@ -95,8 +95,10 @@ function process_psi_line( streams::Vector{BufferedStreams.BufferedInputStream};
       i += 1
       if line != ""
          par,post,isok = parse_psi_line( line, min_num=min_reads, size=size )
+         # skip sample-specific back-splice rows before they can become the event,
+         # otherwise trailing BS rows at eof are returned as the event
+         par[5] == "BS" && (i -= 1; continue)
          event = par[1:5]
-         event[5] == "BS" && (i -= 1; continue)
          !isok && continue
          push!( postvec, post )
          parcomplex = parse_complexity( par[10] )
